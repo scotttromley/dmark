@@ -42,16 +42,36 @@ From this repo (editable/dev):
 python -m pip install -e .
 ```
 
-## Workflow for Outlook ("new Outlook")
+## Preferred Workflow for Outlook ("new Outlook")
 
-1. Export your DMARC-report folder as a `.pst` file.
-2. Extract report attachments:
+This is the primary workflow for most users.
+
+1. Export your DMARC-report folder from Outlook as a single `.pst` file.
+2. Start the web UI:
+
+```powershell
+dmark serve --host 127.0.0.1 --port 8080
+```
+
+3. On first setup, make sure a PST extraction backend is available (recommended: bundled `.NET PSTParse` helper):
+
+```powershell
+dmark setup-pst --install-pstparse-dotnet
+```
+
+4. Open `http://127.0.0.1:8080`, choose **Analyze PST upload**, select your `.pst`, then click **Upload PST and Analyze**.
+
+## CLI Workflows (Optional / Advanced)
+
+If you prefer command-line processing:
+
+1. Extract report attachments:
 
 ```powershell
 dmark extract-pst C:\path\to\dmarc-folder-export.pst --out-dir .\extracted-reports
 ```
 
-3. Analyze extracted files:
+2. Analyze extracted files:
 
 ```powershell
 dmark analyze .\extracted-reports --json-out .\dmarc-summary.json
