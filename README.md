@@ -53,13 +53,8 @@ This is the primary workflow for most users.
 dmark serve --host 127.0.0.1 --port 8080
 ```
 
-3. On first setup, make sure a PST extraction backend is available (recommended: bundled `.NET PSTParse` helper):
-
-```powershell
-dmark setup-pst --install-pstparse-dotnet
-```
-
-4. Open `http://127.0.0.1:8080`, choose **Analyze PST upload**, select your `.pst`, then click **Upload PST and Analyze**.
+3. Open `http://127.0.0.1:8080`. If PST extraction is not ready yet, use the Web UI button to install the bundled `.NET PSTParse` helper.
+4. Choose **Analyze PST upload**, select your `.pst`, then click **Upload PST and Analyze**.
 
 ## CLI Workflows (Optional / Advanced)
 
@@ -132,9 +127,9 @@ Summary computation now reports incremental progress during "Computing domain su
 PST upload extraction still requires one backend:
 - `pypff` available in Python, or
 - `readpst` available in `PATH`, or
-- bundled `.NET PSTParse` helper (use `pstparse-dotnet` engine)
+- bundled `.NET PSTParse` helper (use `pstparse-dotnet` engine; installable from the Web UI)
 
-Quick backend check/install from CLI:
+Optional CLI backend check/install:
 
 ```powershell
 dmark setup-pst
