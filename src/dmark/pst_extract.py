@@ -150,37 +150,39 @@ def _extract_with_pypff(pst_path: Path, out_dir: Path) -> list[Path]:
 
     pst_file = pypff.file()
     pst_file.open(str(pst_path))
-    root_folder = pst_file.get_root_folder()
+    try:
+        root_folder = pst_file.get_root_folder()
 
-    def walk_folder(folder) -> None:
-        nonlocal sequence
-        for message_index in range(folder.number_of_sub_messages):
-            message = folder.get_sub_message(message_index)
-            for attachment_index in range(message.number_of_attachments):
-                attachment = message.get_attachment(attachment_index)
-                name = (
-                    getattr(attachment, "get_long_filename", lambda: "")() or ""
-                ) or (getattr(attachment, "get_filename", lambda: "")() or "")
-                if not _looks_like_dmarc_attachment(name):
-                    continue
-                size = attachment.get_size()
-                data = attachment.read_buffer(size)
-                file_hash = hashlib.sha256(data).hexdigest()
-                if file_hash in seen_hashes:
-                    continue
-                seen_hashes.add(file_hash)
-                sequence += 1
-                ext = _normalized_extension(name)
-                output_path = out_dir / f"report_{sequence:06d}{ext}"
-                output_path.write_bytes(data)
-                written_files.append(output_path)
+        def walk_folder(folder) -> None:
+            nonlocal sequence
+            for message_index in range(folder.number_of_sub_messages):
+                message = folder.get_sub_message(message_index)
+                for attachment_index in range(message.number_of_attachments):
+                    attachment = message.get_attachment(attachment_index)
+                    name = (
+                        getattr(attachment, "get_long_filename", lambda: "")() or ""
+                    ) or (getattr(attachment, "get_filename", lambda: "")() or "")
+                    if not _looks_like_dmarc_attachment(name):
+                        continue
+                    size = attachment.get_size()
+                    data = attachment.read_buffer(size)
+                    file_hash = hashlib.sha256(data).hexdigest()
+                    if file_hash in seen_hashes:
+                        continue
+                    seen_hashes.add(file_hash)
+                    sequence += 1
+                    ext = _normalized_extension(name)
+                    output_path = out_dir / f"report_{sequence:06d}{ext}"
+                    output_path.write_bytes(data)
+                    written_files.append(output_path)
 
-        for folder_index in range(folder.number_of_sub_folders):
-            sub_folder = folder.get_sub_folder(folder_index)
-            walk_folder(sub_folder)
+            for folder_index in range(folder.number_of_sub_folders):
+                sub_folder = folder.get_sub_folder(folder_index)
+                walk_folder(sub_folder)
 
-    walk_folder(root_folder)
-    pst_file.close()
+        walk_folder(root_folder)
+    finally:
+        pst_file.close()
     return written_files
 
 
@@ -193,47 +195,49 @@ def _extract_with_readpst(pst_path: Path, out_dir: Path) -> list[Path]:
         shutil.rmtree(temp_dir)
     temp_dir.mkdir(parents=True, exist_ok=True)
 
-    cmd = [
-        "readpst",
-        "-r",
-        "-D",
-        "-b",
-        "-o",
-        str(temp_dir),
-        str(pst_path),
-    ]
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise PstExtractError(
-            f"readpst failed with exit code {result.returncode}: {result.stderr.strip()}"
+    try:
+        cmd = [
+            "readpst",
+            "-r",
+            "-D",
+            "-b",
+            "-o",
+            str(temp_dir),
+            str(pst_path),
+        ]
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
         )
+        if result.returncode != 0:
+            raise PstExtractError(
+                f"readpst failed with exit code {result.returncode}: {result.stderr.strip()}"
+            )
 
-    seen_hashes: set[str] = set()
-    written_files: list[Path] = []
-    sequence = 0
-    for candidate in temp_dir.rglob("*"):
-        if not candidate.is_file():
-            continue
-        if not _looks_like_dmarc_attachment(candidate.name):
-            continue
-        data = candidate.read_bytes()
-        digest = hashlib.sha256(data).hexdigest()
-        if digest in seen_hashes:
-            continue
-        seen_hashes.add(digest)
-        sequence += 1
-        ext = _normalized_extension(candidate.name)
-        output_path = out_dir / f"report_{sequence:06d}{ext}"
-        output_path.write_bytes(data)
-        written_files.append(output_path)
+        seen_hashes: set[str] = set()
+        written_files: list[Path] = []
+        sequence = 0
+        for candidate in temp_dir.rglob("*"):
+            if not candidate.is_file():
+                continue
+            if not _looks_like_dmarc_attachment(candidate.name):
+                continue
+            data = candidate.read_bytes()
+            digest = hashlib.sha256(data).hexdigest()
+            if digest in seen_hashes:
+                continue
+            seen_hashes.add(digest)
+            sequence += 1
+            ext = _normalized_extension(candidate.name)
+            output_path = out_dir / f"report_{sequence:06d}{ext}"
+            output_path.write_bytes(data)
+            written_files.append(output_path)
 
-    shutil.rmtree(temp_dir, ignore_errors=True)
-    return written_files
+        return written_files
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def _extract_with_pstparse_dotnet(pst_path: Path, out_dir: Path) -> list[Path]:

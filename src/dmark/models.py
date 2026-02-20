@@ -781,6 +781,16 @@ class DomainSummary:
             self.source_day_fail_counts,
             noise_sender_ips,
         )
+        basis_name = str(legitimate_basis.get("basis", "all_observed_traffic"))
+        legitimate_day_message_counts, legitimate_day_fail_counts = _legitimate_day_basis_counts(
+            basis=basis_name,
+            messages_by_day=self.messages_by_day,
+            dmarc_fail_by_day=self.dmarc_fail_by_day,
+            noise_messages_by_day=noise_day_message_counts,
+            noise_fail_by_day=noise_day_fail_counts,
+            approved_messages_by_day=approved_day_message_counts,
+            approved_fail_by_day=approved_day_fail_counts,
+        )
 
         time_series = _build_daily_time_series(
             messages_by_day=self.messages_by_day,
@@ -792,6 +802,8 @@ class DomainSummary:
             noise_messages_by_day=noise_day_message_counts,
             approved_fail_by_day=approved_day_fail_counts,
             noise_fail_by_day=noise_day_fail_counts,
+            legitimate_basis_messages_by_day=legitimate_day_message_counts,
+            legitimate_basis_fail_by_day=legitimate_day_fail_counts,
         )
 
         return {
@@ -1490,6 +1502,35 @@ def _sum_day_counts_for_sources(
     return totals
 
 
+def _legitimate_day_basis_counts(
+    basis: str,
+    messages_by_day: dict[str, int],
+    dmarc_fail_by_day: dict[str, int],
+    noise_messages_by_day: dict[str, int],
+    noise_fail_by_day: dict[str, int],
+    approved_messages_by_day: dict[str, int],
+    approved_fail_by_day: dict[str, int],
+) -> tuple[dict[str, int], dict[str, int]]:
+    if basis == "approved_and_auto_approved_non_noise_senders":
+        return dict(approved_messages_by_day), dict(approved_fail_by_day)
+
+    if basis in {
+        "all_observed_non_noise_traffic",
+        "all_observed_non_noise_traffic_no_approved_sender_matches",
+    }:
+        messages: dict[str, int] = {}
+        fails: dict[str, int] = {}
+        for day, total in messages_by_day.items():
+            noise_messages = int(noise_messages_by_day.get(day, 0))
+            messages[day] = max(0, int(total) - noise_messages)
+        for day, total_fail in dmarc_fail_by_day.items():
+            noise_fail = int(noise_fail_by_day.get(day, 0))
+            fails[day] = max(0, int(total_fail) - noise_fail)
+        return messages, fails
+
+    return dict(messages_by_day), dict(dmarc_fail_by_day)
+
+
 def _build_daily_time_series(
     messages_by_day: dict[str, int],
     dmarc_pass_by_day: dict[str, int],
@@ -1500,11 +1541,15 @@ def _build_daily_time_series(
     noise_messages_by_day: dict[str, int] | None = None,
     approved_fail_by_day: dict[str, int] | None = None,
     noise_fail_by_day: dict[str, int] | None = None,
+    legitimate_basis_messages_by_day: dict[str, int] | None = None,
+    legitimate_basis_fail_by_day: dict[str, int] | None = None,
 ) -> list[dict[str, object]]:
     approved_messages_by_day = approved_messages_by_day or {}
     noise_messages_by_day = noise_messages_by_day or {}
     approved_fail_by_day = approved_fail_by_day or {}
     noise_fail_by_day = noise_fail_by_day or {}
+    legitimate_basis_messages_by_day = legitimate_basis_messages_by_day or approved_messages_by_day
+    legitimate_basis_fail_by_day = legitimate_basis_fail_by_day or approved_fail_by_day
     if not messages_by_day:
         return []
 
@@ -1520,9 +1565,11 @@ def _build_daily_time_series(
         approved_messages = int(approved_messages_by_day.get(day, 0))
         noise_messages = int(noise_messages_by_day.get(day, 0))
         pending_messages = max(0, total - approved_messages - noise_messages)
-        legitimate_fail = int(approved_fail_by_day.get(day, 0))
+        approved_fail = int(approved_fail_by_day.get(day, 0))
+        legitimate_messages = int(legitimate_basis_messages_by_day.get(day, 0))
+        legitimate_fail = int(legitimate_basis_fail_by_day.get(day, 0))
         noise_fail = int(noise_fail_by_day.get(day, 0))
-        attack_fail = max(0, dmarc_fail - legitimate_fail - noise_fail)
+        attack_fail = max(0, dmarc_fail - approved_fail - noise_fail)
         non_noise_messages = max(0, total - noise_messages)
         rows.append(
             {
@@ -1542,10 +1589,11 @@ def _build_daily_time_series(
                 "approved_messages": approved_messages,
                 "noise_messages": noise_messages,
                 "pending_review_messages": pending_messages,
+                "legitimate_basis_messages": legitimate_messages,
                 "legitimate_fail_count": legitimate_fail,
                 "attack_pressure_fail_count": attack_fail,
                 "legitimate_fail_rate": round(
-                    (legitimate_fail / approved_messages) if approved_messages > 0 else 0.0,
+                    (legitimate_fail / legitimate_messages) if legitimate_messages > 0 else 0.0,
                     6,
                 ),
                 "attack_pressure_fail_rate": round(

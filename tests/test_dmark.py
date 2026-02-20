@@ -340,6 +340,58 @@ class DmarkTests(unittest.TestCase):
         self.assertTrue(any("already present" in str(step) for step in action_plan))
         self.assertTrue(any("Observed selector1 CNAME" in str(step) for step in action_plan))
 
+    def test_time_series_legitimate_fail_rate_follows_readiness_basis(self) -> None:
+        summary = DomainSummary(domain="basis.example")
+        summary.messages_total = 100
+        summary.dmarc_pass_count = 80
+        summary.dmarc_fail_count = 20
+        summary.policy_counts["reject"] = 1
+        summary.policy_pct_total = 100
+        summary.policy_pct_reports = 1
+
+        summary.source_message_counts["198.51.100.10"] = 50
+        summary.source_pass_counts["198.51.100.10"] = 40
+        summary.source_fail_counts["198.51.100.10"] = 10
+        summary.source_day_message_counts["198.51.100.10"] = {
+            "2026-02-18": 25,
+            "2026-02-19": 25,
+        }
+        summary.source_day_fail_counts["198.51.100.10"] = {
+            "2026-02-18": 2,
+            "2026-02-19": 8,
+        }
+
+        summary.source_message_counts["198.51.100.11"] = 50
+        summary.source_pass_counts["198.51.100.11"] = 40
+        summary.source_fail_counts["198.51.100.11"] = 10
+        summary.source_day_message_counts["198.51.100.11"] = {
+            "2026-02-18": 25,
+            "2026-02-19": 25,
+        }
+        summary.source_day_fail_counts["198.51.100.11"] = {
+            "2026-02-18": 3,
+            "2026-02-19": 7,
+        }
+
+        summary.messages_by_day = {"2026-02-18": 50, "2026-02-19": 50}
+        summary.dmarc_pass_by_day = {"2026-02-18": 45, "2026-02-19": 35}
+        summary.dmarc_fail_by_day = {"2026-02-18": 5, "2026-02-19": 15}
+
+        payload = summary.to_dict(resolve_source_ips=False)
+        self.assertEqual(
+            payload.get("legitimate_basis", {}).get("basis"),
+            "all_observed_traffic",
+        )
+        series = payload.get("time_series", [])
+        self.assertEqual(len(series), 2)
+        by_day = {
+            str(item.get("date")): float(item.get("legitimate_fail_rate", 0.0))
+            for item in series
+            if isinstance(item, dict)
+        }
+        self.assertAlmostEqual(by_day["2026-02-18"], 0.10, places=6)
+        self.assertAlmostEqual(by_day["2026-02-19"], 0.30, places=6)
+
     def test_nslookup_txt_parser_handles_windows_multiline_format(self) -> None:
         sample_output = """
 Server:  UnKnown
