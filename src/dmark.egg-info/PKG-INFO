@@ -1,0 +1,124 @@
+Metadata-Version: 2.4
+Name: dmark
+Version: 0.1.0
+Summary: Parse and evaluate DMARC aggregate reports from XML, XML.GZ, or PST-extracted attachments.
+Author: Scott + Codex
+License: MIT
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: Flask<4.0,>=3.0
+
+# dmark
+
+`dmark` is a local CLI for bulk DMARC aggregate report evaluation.
+
+It handles:
+- `.xml` and `.xml.gz` DMARC report files
+- Optional extraction of DMARC attachments from a `.pst` export
+- Local web UI for upload or folder-path analysis
+- Domain-level pass/fail metrics and actionable recommendations
+
+## Why this helps
+
+For large mailboxes (thousands of DMARC report emails), this tool gives you:
+- DMARC pass/fail rates
+- DKIM/SPF alignment rates
+- Policy/disposition summary
+- Top failing source IPs
+
+## Install
+
+From this repo:
+
+```powershell
+python -m pip install -e .
+```
+
+## Workflow for Outlook ("new Outlook")
+
+1. Export your DMARC-report folder as a `.pst` file.
+2. Extract report attachments:
+
+```powershell
+dmark extract-pst C:\path\to\dmarc-folder-export.pst --out-dir .\extracted-reports
+```
+
+3. Analyze extracted files:
+
+```powershell
+dmark analyze .\extracted-reports --json-out .\dmarc-summary.json
+```
+
+If you already have `.xml` / `.xml.gz` files:
+
+```powershell
+dmark analyze C:\path\to\reports
+```
+
+## Web UI
+
+Start the local web app:
+
+```powershell
+dmark serve --host 127.0.0.1 --port 8080
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8080
+```
+
+UI modes:
+- Analyze local path: best for large sets (e.g., 4300 reports) without browser upload overhead.
+- Analyze upload: good for small batches and spot checks.
+- Analyze PST upload: upload one `.pst`, extract DMARC report attachments, and analyze in one step.
+
+You can change upload size limit:
+
+```powershell
+dmark serve --max-upload-mb 500
+```
+
+Default web upload limit is `1024 MB`.
+
+PST upload extraction still requires one backend:
+- `pypff` available in Python, or
+- `readpst` available in `PATH`
+
+## PST extraction backends
+
+`extract-pst` uses:
+- `pypff` (if installed), otherwise
+- `readpst` (if available in `PATH`)
+
+If extraction fails, install one of those backends and rerun.
+
+## Example output
+
+Human summary:
+
+- Files scanned / parsed / parse errors
+- Duplicate reports skipped
+- Per-domain:
+  - messages, DMARC pass/fail rate
+  - DKIM and SPF aligned pass rate
+  - disposition totals
+  - top failing source
+  - recommendations
+
+Machine-readable JSON:
+- `--json-out path\to\summary.json`
+
+## Notes
+
+- Duplicate aggregate reports are deduped by `(org_name, report_id, begin, end, policy_domain)`.
+- Relaxed alignment is approximated with subdomain checks to keep this dependency-free.
+- For public-suffix-accurate alignment logic, add PSL-based domain normalization in a future iteration.
+- Web UI uses Flask and runs locally on your machine.
+
+## Dev test
+
+```powershell
+python -m unittest discover -s tests -v
+```

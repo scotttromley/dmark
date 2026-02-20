@@ -1,0 +1,2 @@
+[console_scripts]
+dmark = dmark.cli:main

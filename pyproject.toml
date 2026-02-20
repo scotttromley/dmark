@@ -1,0 +1,22 @@
+[project]
+name = "dmark"
+version = "0.1.0"
+description = "Parse and evaluate DMARC aggregate reports from XML, XML.GZ, or PST-extracted attachments."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Scott + Codex" }]
+dependencies = ["Flask>=3.0,<4.0"]
+
+[project.scripts]
+dmark = "dmark.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]

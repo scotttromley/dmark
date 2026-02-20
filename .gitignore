@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.tmp/
+scratch_test.tmp
+tmp*/
+extracted-reports/
+*.json
+*.pst
+.dmark_web_runs/
+.dmark_cache/
+tools/**/bin/
+tools/**/obj/
