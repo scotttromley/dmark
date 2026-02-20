@@ -4,9 +4,33 @@ version = "0.1.0"
 description = "Parse and evaluate DMARC aggregate reports from XML, XML.GZ, or PST-extracted attachments."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
 authors = [{ name = "Scott + Codex" }]
+keywords = ["dmarc", "email", "security", "outlook", "pst"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Environment :: Web Environment",
+  "Framework :: Flask",
+  "Intended Audience :: Information Technology",
+  "Intended Audience :: System Administrators",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Communications :: Email :: Filters",
+  "Topic :: Security",
+  "Topic :: System :: Systems Administration",
+]
 dependencies = ["Flask>=3.0,<4.0"]
+
+[project.urls]
+Homepage = "https://github.com/scotttromley/dmark"
+Repository = "https://github.com/scotttromley/dmark"
+Issues = "https://github.com/scotttromley/dmark/issues"
 
 [project.scripts]
 dmark = "dmark.cli:main"
@@ -17,6 +41,12 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
+
+[tool.setuptools.package-data]
+dmark = [
+  "dotnet/pstparse_extractor/*.cs",
+  "dotnet/pstparse_extractor/*.csproj",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

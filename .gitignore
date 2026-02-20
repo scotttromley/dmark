@@ -11,3 +11,6 @@ extracted-reports/
 .dmark_cache/
 tools/**/bin/
 tools/**/obj/
+*.egg-info/
+dist/
+build/

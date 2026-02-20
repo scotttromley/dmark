@@ -30,7 +30,13 @@ For large mailboxes (thousands of DMARC report emails), this tool gives you:
 
 ## Install
 
-From this repo:
+From PyPI:
+
+```powershell
+python -m pip install dmark
+```
+
+From this repo (editable/dev):
 
 ```powershell
 python -m pip install -e .

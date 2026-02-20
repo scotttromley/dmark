@@ -282,7 +282,21 @@ def _extract_with_pstparse_dotnet(pst_path: Path, out_dir: Path) -> list[Path]:
 
 
 def _pstparse_project_path() -> Path:
-    return Path(__file__).resolve().parents[2] / "tools" / "pstparse_extractor" / "pstparse_extractor.csproj"
+    package_project = (
+        Path(__file__).resolve().parent
+        / "dotnet"
+        / "pstparse_extractor"
+        / "pstparse_extractor.csproj"
+    )
+    if package_project.exists():
+        return package_project
+    # Fallback for source-tree development before package data is installed.
+    return (
+        Path(__file__).resolve().parents[2]
+        / "tools"
+        / "pstparse_extractor"
+        / "pstparse_extractor.csproj"
+    )
 
 
 def _pstparse_helper_dll_path() -> Path:
