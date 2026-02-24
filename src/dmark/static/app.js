@@ -1,5 +1,7 @@
 const statusEl = document.getElementById("status");
+const explainWrapEl = document.getElementById("explainWrap");
 const metricsEl = document.getElementById("metrics");
+const summaryWrapEl = document.getElementById("summaryWrap");
 const tableWrapEl = document.getElementById("tableWrap");
 const trendWrapEl = document.getElementById("trendWrap");
 
@@ -13,6 +15,10 @@ function fmtPct(value) {
     return (n * 100).toFixed(2) + "%";
 }
 
+function fmtInt(value) {
+    return Number(value || 0).toLocaleString();
+}
+
 function esc(value) {
     return String(value ?? "")
         .replace(/&/g, "&amp;")
@@ -20,6 +26,258 @@ function esc(value) {
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#39;");
+}
+
+function basisLabel(value) {
+    const raw = String(value || "all_observed_traffic");
+    if (raw === "approved_and_auto_approved_non_noise_senders") {
+        return "approved sender traffic (excluding relay noise)";
+    }
+    if (raw === "all_observed_traffic_excluding_noise") {
+        return "all observed traffic (excluding relay noise)";
+    }
+    return raw.replace(/_/g, " ");
+}
+
+function legitimateRiskNarrative(domain, policy) {
+    const legitimateBasis = domain.legitimate_basis || {};
+    const failRate = Number(legitimateBasis.fail_rate || 0);
+    const failCount = Number(legitimateBasis.fail_count || 0);
+    const total = Number(legitimateBasis.messages_total || 0);
+    const spfGap = Number(domain.spf_alignment_gap_rate || 0);
+    const dkimGap = Number(domain.dkim_alignment_gap_rate || 0);
+
+    let how = "review top failing approved senders and fix whichever aligned path (DKIM or SPF) is failing.";
+    if (spfGap >= 0.05 && Number(domain.dkim_aligned_pass_rate || 0) >= 0.9) {
+        how = "reduce SPF alignment gaps on legitimate senders (for example custom/ aligned return-path domains), while keeping DKIM as primary.";
+    } else if (dkimGap >= 0.02) {
+        how = "fix DKIM alignment/signature survival first, then re-check SPF alignment.";
+    }
+
+    if (policy === "reject" && failRate <= 0.01) {
+        return (
+            "Reject policy is active and legitimate mail impact appears low. "
+            + `Why: only ${fmtPct(failRate)} legitimate failures were observed (${fmtInt(failCount)} of ${fmtInt(total)}). `
+            + "How: keep current posture, monitor trend drift, and remediate any new approved-sender failures quickly."
+        );
+    }
+
+    if (policy === "reject") {
+        return (
+            "Reject policy is active, but legitimate mail impact is above ideal and should be reduced. "
+            + `Why: ${fmtPct(failRate)} legitimate failures were observed (${fmtInt(failCount)} of ${fmtInt(total)}). `
+            + `How: ${how}`
+        );
+    }
+
+    if (policy === "quarantine") {
+        return (
+            "Quarantine policy is active; reject-level enforcement is not fully in place yet. "
+            + `Why: legitimate fail rate is ${fmtPct(failRate)} on the current readiness basis. `
+            + "How: stabilize aligned authentication and then stage toward reject."
+        );
+    }
+
+    if (policy === "none") {
+        return (
+            "Monitor-only mode is active; spoofed messages are not fully blocked by policy. "
+            + `Why: published policy is p=none while fail rates are ${fmtPct(Number(domain.dmarc_fail_rate || 0))}. `
+            + "How: fix failing legitimate sender alignment first, then stage to quarantine/reject."
+        );
+    }
+
+    return (
+        "Policy posture is mixed or unclear; verify published DMARC policy consistency. "
+        + "Why: reports show multiple policy states in this window. "
+        + "How: validate DNS policy history and analyze a narrower date range if needed."
+    );
+}
+
+function attackPressureNarrative(domain) {
+    const attackPressureRate = Number(domain.attack_pressure_fail_rate || 0);
+    const attackPressureCount = Number(domain.attack_pressure_fail_count || 0);
+    if (attackPressureRate >= 0.02) {
+        return (
+            "Attack pressure is elevated, which usually reflects blocked unauthorized sender traffic. "
+            + `Why: ${fmtPct(attackPressureRate)} (${fmtInt(attackPressureCount)} messages) failed outside approved sender traffic. `
+            + "How: keep enforcement active and investigate only the highest-volume unknown non-noise sources."
+        );
+    }
+    if (attackPressureRate > 0) {
+        return (
+            "Attack pressure is present but currently limited. "
+            + `Why: ${fmtPct(attackPressureRate)} (${fmtInt(attackPressureCount)} messages) failed outside approved sender traffic. `
+            + "How: continue monitoring and prioritize remediation on legitimate sender alignment."
+        );
+    }
+    return "";
+}
+
+function relayNoiseNarrative(domain) {
+    const relayFailCount = Number(domain.receiver_side_security_relay_fail_count || 0);
+    if (relayFailCount <= 0) {
+        return "";
+    }
+    return (
+        "Receiver-side security relay traffic is present; treat it as analysis noise unless confirmed as your sender path. "
+        + `Why: ${fmtInt(relayFailCount)} failures were classified as receiver-side relay patterns. `
+        + "How: do not add those relay IPs to SPF; focus remediation on approved sender infrastructure."
+    );
+}
+
+function domainReadabilityStatus(domain) {
+    const policy = String(domain.dominant_policy || "unknown").toLowerCase();
+    const readiness = String(domain.enforcement_readiness || "").toLowerCase();
+    const legitimateBasis = domain.legitimate_basis || {};
+    const legitimateFailRate = Number(legitimateBasis.fail_rate || 0);
+
+    if (readiness.includes("not_ready") || legitimateFailRate >= 0.03) {
+        return { label: "Action needed", css: "risk-high" };
+    }
+    if (policy === "none" || legitimateFailRate >= 0.01) {
+        return { label: "Watch closely", css: "risk-medium" };
+    }
+    return { label: "Stable", css: "risk-low" };
+}
+
+function domainInterpretation(domain) {
+    const policy = String(domain.dominant_policy || "unknown").toLowerCase();
+    const lines = [];
+
+    lines.push(legitimateRiskNarrative(domain, policy));
+    const attackLine = attackPressureNarrative(domain);
+    if (attackLine) lines.push(attackLine);
+    const noiseLine = relayNoiseNarrative(domain);
+    if (noiseLine) lines.push(noiseLine);
+
+    return lines;
+}
+
+function renderExplanation(data, domains) {
+    const filesScanned = Number(data.files_scanned || 0);
+    const filesParsed = Number(data.files_parsed || 0);
+    const parseErrors = Number(data.parse_errors || 0);
+    const duplicates = Number(data.duplicate_reports_skipped || 0);
+    const domainCount = Array.isArray(domains) ? domains.length : 0;
+
+    const qualityNotes = [];
+    if (parseErrors === 0) {
+        qualityNotes.push("No parse errors were detected, so report coverage is complete for recognized input files.");
+    } else {
+        qualityNotes.push(`${fmtInt(parseErrors)} files failed to parse. Review parse errors before making final policy decisions.`);
+    }
+    if (duplicates > 0) {
+        qualityNotes.push(`${fmtInt(duplicates)} duplicate aggregate reports were skipped to prevent double-counting.`);
+    } else {
+        qualityNotes.push("No duplicate reports were detected.");
+    }
+
+    explainWrapEl.innerHTML = `
+    <article class="first-run-guide">
+      <h3>How To Read This Result</h3>
+      <div class="guide-topline">
+        <span><strong>${fmtInt(filesParsed)}</strong> of <strong>${fmtInt(filesScanned)}</strong> files parsed</span>
+        <span><strong>${fmtInt(domainCount)}</strong> domain${domainCount === 1 ? "" : "s"} analyzed</span>
+      </div>
+      <div class="guide-notes">${qualityNotes.map((note) => `<div>${esc(note)}</div>`).join("")}</div>
+      <details>
+        <summary>Plain-language glossary</summary>
+        <div class="guide-glossary">
+          <div><strong>Deliverability safety:</strong> risk of hurting legitimate mail if enforcement is tightened.</div>
+          <div><strong>Attack pressure:</strong> unauthorized or unapproved sender failures, separated from legitimate sender risk.</div>
+          <div><strong>Authentication coverage:</strong> percent of legitimate traffic with aligned DKIM or SPF.</div>
+          <div><strong>SPF alignment gap:</strong> SPF passes authentication, but Return-Path domain is not aligned to visible From domain.</div>
+          <div><strong>Receiver-side noise:</strong> relay/scanning infrastructure (for example cloud-sec-av.com) that can inflate fail counts.</div>
+          <div><strong>Readiness basis:</strong> traffic slice used for safety decisions, typically approved sender traffic minus noise.</div>
+        </div>
+      </details>
+    </article>
+  `;
+}
+
+function renderDomainSummaryCards(domains) {
+    if (!Array.isArray(domains) || !domains.length) {
+        summaryWrapEl.innerHTML = "";
+        return;
+    }
+
+    const cards = domains.map((d) => {
+        const status = domainReadabilityStatus(d);
+        const interpretations = domainInterpretation(d);
+        const legitimateBasis = d.legitimate_basis || {};
+        const senderSummary = d.sender_inventory_summary || {};
+        const topActions = (Array.isArray(d.action_plan) ? d.action_plan : []).slice(0, 3);
+        const topIssues = (Array.isArray(d.issues) ? d.issues : []).slice(0, 3);
+        const topSources = (Array.isArray(d.top_failing_sources) ? d.top_failing_sources : []).slice(0, 3);
+        const policy = `${d.dominant_policy || "unknown"} (${(Number(d.policy_consistency || 0) * 100).toFixed(0)}%, pct ${Number(d.average_policy_pct || 100).toFixed(0)})`;
+
+        const issueHtml = topIssues.length
+            ? topIssues.map((issue) => `<div class="mini"><strong>${esc(issue.severity || "low")}:</strong> ${esc(issue.title || "Issue")}</div>`).join("")
+            : "<div class='mini'>No key issues flagged.</div>";
+
+        const sourceHtml = topSources.length
+            ? topSources.map((source) => {
+                const host = source.hostname ? ` -> ${esc(source.hostname)}` : "";
+                return `<div class="mini mono">${esc(source.source_ip)} (${fmtInt(source.message_count || 0)})${host}</div>`;
+            }).join("")
+            : "<div class='mini'>No concentrated failing sources.</div>";
+
+        const actionHtml = topActions.length
+            ? `<ol class="action-list">${topActions.map((step) => `<li>${esc(step)}</li>`).join("")}</ol>`
+            : "<div class='mini'>No action steps were generated.</div>";
+
+        return `
+      <article class="domain-brief ${status.css}">
+        <header>
+          <h3>${esc(d.domain || "unknown")}</h3>
+          <span class="risk-pill ${status.css}">${esc(status.label)}</span>
+        </header>
+        <div class="brief-grid">
+          <div><strong>Policy:</strong> ${esc(policy)}</div>
+          <div><strong>Readiness:</strong> ${esc(d.enforcement_readiness || "-")}</div>
+          <div><strong>Legitimate fail rate:</strong> ${fmtPct(legitimateBasis.fail_rate)}</div>
+          <div><strong>Attack pressure:</strong> ${fmtPct(d.attack_pressure_fail_rate)} (${fmtInt(d.attack_pressure_fail_count || 0)} fails)</div>
+          <div><strong>Auth coverage:</strong> ${fmtPct(d.authentication_coverage_rate)} (DKIM ${fmtPct(d.authentication_coverage_dkim_rate)} / SPF ${fmtPct(d.authentication_coverage_spf_rate)})</div>
+          <div><strong>Readiness basis:</strong> ${esc(basisLabel(legitimateBasis.basis))}</div>
+        </div>
+        <div class="what-means">
+          <strong>What this means:</strong>
+          ${interpretations.map((line) => `<div class="mini">${esc(line)}</div>`).join("")}
+        </div>
+        <div class="action-now">
+          <strong>What to do now:</strong>
+          ${actionHtml}
+        </div>
+        <details>
+          <summary>See evidence and advanced diagnostics</summary>
+          <div class="advanced-grid">
+            <div>
+              <strong>Top issues</strong>
+              ${issueHtml}
+            </div>
+            <div>
+              <strong>Top failing sources</strong>
+              ${sourceHtml}
+            </div>
+            <div>
+              <strong>Sender mix context</strong>
+              <div class="mini">Approved: ${fmtPct(senderSummary.approved_rate)} (${fmtInt(senderSummary.approved_messages || 0)} msgs)</div>
+              <div class="mini">Noise excluded: ${fmtPct(senderSummary.noise_rate)} (${fmtInt(senderSummary.noise_messages || 0)} msgs)</div>
+              <div class="mini">Pending review: ${fmtPct(senderSummary.pending_review_rate)} (${fmtInt(senderSummary.pending_review_messages || 0)} msgs)</div>
+            </div>
+          </div>
+        </details>
+      </article>
+    `;
+    }).join("");
+
+    summaryWrapEl.innerHTML = `
+    <div class="summary-head">
+      <h2>First-Pass Interpretation</h2>
+      <p>Start here for action-oriented decisions. Use the detailed table below for full diagnostics.</p>
+    </div>
+    <div class="domain-brief-grid">${cards}</div>
+  `;
 }
 
 function renderMetrics(data) {
@@ -188,6 +446,8 @@ function renderTrendCharts(domains) {
 
 function renderDomains(data) {
     const domains = Array.isArray(data.domains) ? data.domains : [];
+    renderExplanation(data, domains);
+    renderDomainSummaryCards(domains);
     if (!domains.length) {
         tableWrapEl.innerHTML = "<p class='hint'>No domain summaries were returned.</p>";
         trendWrapEl.innerHTML = "";
@@ -468,7 +728,9 @@ async function pollPstJob(jobId) {
 }
 
 function resetOutput() {
+    explainWrapEl.innerHTML = "";
     metricsEl.innerHTML = "";
+    summaryWrapEl.innerHTML = "";
     tableWrapEl.innerHTML = "";
     trendWrapEl.innerHTML = "";
 }

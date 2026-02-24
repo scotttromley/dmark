@@ -104,6 +104,8 @@ UI modes:
 - Analyze PST upload: upload one `.pst`, extract DMARC report attachments, and analyze in one step.
   - PST uploads now run as background jobs and show live stage updates in the UI (`queued`, `extracting`, `analyzing`, `complete/error`) including parsed file progress during analysis.
   - Web UI analysis includes DNS diagnostics to verify DMARC/SPF/DKIM record state and refine action plans.
+  - Results now include a "First-Pass Interpretation" section that explains policy posture, legitimate-risk basis, attack pressure, and immediate next actions in plain language.
+  - Advanced evidence remains available under expandable details for deeper investigation.
   - Results include per-domain daily trend charts below the summary table.
 
 You can change upload size limit:
