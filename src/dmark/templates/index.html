@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>dmark Web UI</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>dmark: DMARC Report Analyzer</h1>
+      <p class="sub">Analyze DMARC reports by local path, by direct XML upload, or by PST upload. Upload size limit: <strong>{{ max_upload_mb }} MB</strong>.</p>
+    </section>
+
+    <section class="grid">
+      <form id="pathForm" class="card">
+        <h2>Analyze Local Path</h2>
+        <label for="path">Folder or file path</label>
+        <input id="path" name="path" type="text" placeholder="C:\reports\dmarc" required />
+        <div class="controls">
+          <div>
+            <label for="pathFail">Min fail rate alert</label>
+            <input id="pathFail" name="min_fail_rate_alert" type="number" min="0" step="0.001" value="{{ default_fail_rate }}" />
+          </div>
+          <div>
+            <label for="pathMinMessages">Min messages alert</label>
+            <input id="pathMinMessages" name="min_messages_alert" type="number" min="1" step="1" value="{{ default_min_messages }}" />
+          </div>
+        </div>
+        <button type="submit">Analyze Path</button>
+        <p class="hint">Best for very large datasets because files stay on disk.</p>
+      </form>
+
+      <form id="uploadForm" class="card" enctype="multipart/form-data">
+        <h2>Analyze XML Upload</h2>
+        <label for="files">Report files (.xml / .xml.gz)</label>
+        <input id="files" name="files" type="file" multiple required />
+        <div class="controls">
+          <div>
+            <label for="uploadFail">Min fail rate alert</label>
+            <input id="uploadFail" name="min_fail_rate_alert" type="number" min="0" step="0.001" value="{{ default_fail_rate }}" />
+          </div>
+          <div>
+            <label for="uploadMinMessages">Min messages alert</label>
+            <input id="uploadMinMessages" name="min_messages_alert" type="number" min="1" step="1" value="{{ default_min_messages }}" />
+          </div>
+        </div>
+        <button type="submit">Analyze Upload</button>
+        <p class="hint">Useful for spot-checks.</p>
+      </form>
+
+      <form id="pstForm" class="card" enctype="multipart/form-data">
+        <h2>Analyze PST Upload</h2>
+        <label for="pstFile">PST file</label>
+        <input id="pstFile" name="pst_file" type="file" accept=".pst" required />
+        <label for="pstEngine">Extraction engine</label>
+        <select id="pstEngine" name="engine">
+          <option value="auto">auto (recommended)</option>
+          <option value="pypff">pypff only</option>
+          <option value="readpst">readpst only</option>
+          <option value="pstparse-dotnet">pstparse-dotnet only</option>
+        </select>
+        <div class="controls">
+          <div>
+            <label for="pstFail">Min fail rate alert</label>
+            <input id="pstFail" name="min_fail_rate_alert" type="number" min="0" step="0.001" value="{{ default_fail_rate }}" />
+          </div>
+          <div>
+            <label for="pstMinMessages">Min messages alert</label>
+            <input id="pstMinMessages" name="min_messages_alert" type="number" min="1" step="1" value="{{ default_min_messages }}" />
+          </div>
+        </div>
+        <button type="submit">Upload PST And Analyze</button>
+        <button id="installPstparseBtn" type="button">Install PSTParse .NET helper</button>
+        <p class="hint">This extracts DMARC report attachments from the uploaded PST, then analyzes them.</p>
+      </form>
+    </section>
+
+    <section class="card result">
+      <div id="status" class="status">Ready.</div>
+      <div id="metrics" class="metrics"></div>
+      <div id="tableWrap"></div>
+      <div id="trendWrap" class="trends"></div>
+    </section>
+  </div>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

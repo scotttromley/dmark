@@ -141,6 +141,21 @@ def _build_parser() -> argparse.ArgumentParser:
         default=0,
         help="Parser worker threads for web requests (default: 0=auto)",
     )
+    serve_parser.add_argument(
+        "--job-ttl-seconds",
+        type=int,
+        default=6 * 60 * 60,
+        help=(
+            "How long completed/failed PST jobs remain queryable in-memory "
+            "(default: 21600)"
+        ),
+    )
+    serve_parser.add_argument(
+        "--max-jobs",
+        type=int,
+        default=500,
+        help="Maximum PST jobs kept in-memory before oldest entries are pruned.",
+    )
 
     setup_parser = subparsers.add_parser(
         "setup-pst",
@@ -211,6 +226,8 @@ def _run_serve(args: argparse.Namespace) -> int:
         min_fail_rate_alert=args.min_fail_rate_alert,
         min_messages_alert=args.min_messages_alert,
         parse_workers=args.parse_workers,
+        job_ttl_seconds=args.job_ttl_seconds,
+        max_jobs=args.max_jobs,
     )
     print(f"Serving web UI at http://{args.host}:{args.port}")
     print("Use Ctrl+C to stop.")

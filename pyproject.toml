@@ -46,7 +46,11 @@ package-dir = { "" = "src" }
 dmark = [
   "dotnet/pstparse_extractor/*.cs",
   "dotnet/pstparse_extractor/*.csproj",
+  "templates/*.html",
+  "static/*.css",
+  "static/*.js",
 ]
+
 
 [tool.setuptools.packages.find]
 where = ["src"]

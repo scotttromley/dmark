@@ -122,6 +122,12 @@ dmark serve --parse-workers 16
 dmark analyze C:\path\to\reports --parse-workers 16
 ```
 
+Long-running web sessions can also tune PST job retention:
+
+```powershell
+dmark serve --job-ttl-seconds 86400 --max-jobs 1000
+```
+
 Summary computation now reports incremental progress during "Computing domain summaries" as reports are aggregated.
 
 PST upload extraction still requires one backend:
@@ -195,4 +201,12 @@ Save as `.dmark_cache/approved_senders.json` to drive readiness and impact analy
 
 ```powershell
 python -m unittest discover -s tests -v
+```
+
+## Dev quality checks
+
+```powershell
+python -m pip install ruff mypy
+python -m ruff check src tests
+python -m mypy --follow-imports=skip src/dmark/parser.py src/dmark/classification.py src/dmark/time_series.py
 ```

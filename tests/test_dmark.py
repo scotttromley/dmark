@@ -405,7 +405,7 @@ cca.one\ttext =
 \t"v=spf1 include:spf.protection.outlook.com ~all"
 Non-authoritative answer:
 """
-        with patch("dmark.models._run_nslookup", return_value=sample_output):
+        with patch("dmark.dns._run_nslookup", return_value=sample_output):
             records = _lookup_txt_records_nslookup("cca.one")
         self.assertTrue(any(item.lower().startswith("v=dmarc1") for item in records))
         self.assertTrue(any(item.lower().startswith("v=spf1") for item in records))

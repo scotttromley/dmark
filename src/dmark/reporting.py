@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import platform
 import time
@@ -14,6 +15,7 @@ from .parser import ParseError, parse_report_bytes, parse_report_file
 ProgressCallback = Callable[[dict[str, object]], None]
 _AUTOTUNE_MIN_FILES = 200
 _AUTOTUNE_SAMPLE_SIZE = 120
+_LOG = logging.getLogger(__name__)
 
 
 def analyze_inputs(
@@ -29,6 +31,12 @@ def analyze_inputs(
     candidates = collect_candidates(inputs)
     if not candidates:
         raise ParseError("No candidate report files found.")
+    _LOG.info(
+        "analyze_inputs starting: inputs=%d candidates=%d parse_workers=%s",
+        len(inputs),
+        len(candidates),
+        str(parse_workers if parse_workers is not None else "auto"),
+    )
 
     parsed, parse_errors = _parse_paths(
         candidates=candidates,
@@ -47,7 +55,7 @@ def analyze_inputs(
         total=len(candidates),
         parse_errors=parse_errors,
     )
-    return _build_output(
+    output = _build_output(
         reports=parsed,
         files_scanned=len(candidates),
         files_parsed=len(parsed),
@@ -58,6 +66,14 @@ def analyze_inputs(
         resolve_dns_records=resolve_dns_records,
         progress_callback=progress_callback,
     )
+    _LOG.info(
+        "analyze_inputs complete: scanned=%d parsed=%d parse_errors=%d domains=%d",
+        int(output.get("files_scanned", 0)),
+        int(output.get("files_parsed", 0)),
+        int(output.get("parse_errors", 0)),
+        len(output.get("domains", [])) if isinstance(output.get("domains", []), list) else 0,
+    )
+    return output
 
 
 def analyze_uploaded_files(
@@ -73,6 +89,12 @@ def analyze_uploaded_files(
     accepted = [item for item in files if _is_candidate_name(item[0])]
     if not accepted:
         raise ParseError("No candidate report files found in upload.")
+    _LOG.info(
+        "analyze_uploaded_files starting: uploaded=%d accepted=%d parse_workers=%s",
+        len(files),
+        len(accepted),
+        str(parse_workers if parse_workers is not None else "auto"),
+    )
 
     parsed, parse_errors = _parse_uploads(
         accepted=accepted,
@@ -91,7 +113,7 @@ def analyze_uploaded_files(
         total=len(accepted),
         parse_errors=parse_errors,
     )
-    return _build_output(
+    output = _build_output(
         reports=parsed,
         files_scanned=len(accepted),
         files_parsed=len(parsed),
@@ -102,6 +124,14 @@ def analyze_uploaded_files(
         resolve_dns_records=resolve_dns_records,
         progress_callback=progress_callback,
     )
+    _LOG.info(
+        "analyze_uploaded_files complete: scanned=%d parsed=%d parse_errors=%d domains=%d",
+        int(output.get("files_scanned", 0)),
+        int(output.get("files_parsed", 0)),
+        int(output.get("parse_errors", 0)),
+        len(output.get("domains", [])) if isinstance(output.get("domains", []), list) else 0,
+    )
+    return output
 
 
 def collect_candidates(inputs: list[Path]) -> list[Path]:
@@ -331,26 +361,13 @@ def _parse_paths_sequential(
     stop_on_error: bool,
     progress_callback: ProgressCallback | None,
 ) -> tuple[list, int]:
-    parsed = []
-    parse_errors = 0
-    total = len(candidates)
-    for index, path in enumerate(candidates, start=1):
-        try:
-            parsed.append(parse_report_file(path))
-        except ParseError:
-            parse_errors += 1
-            if stop_on_error:
-                raise
-        if _should_emit_progress(index, total):
-            _emit_progress(
-                progress_callback,
-                phase="parse",
-                processed=index,
-                total=total,
-                parse_errors=parse_errors,
-                workers=1,
-            )
-    return parsed, parse_errors
+    return _parse_sequential(
+        items=candidates,
+        parse_item=parse_report_file,
+        stop_on_error=stop_on_error,
+        progress_callback=progress_callback,
+        workers=1,
+    )
 
 
 def _parse_uploads_sequential(
@@ -358,26 +375,13 @@ def _parse_uploads_sequential(
     stop_on_error: bool,
     progress_callback: ProgressCallback | None,
 ) -> tuple[list, int]:
-    parsed = []
-    parse_errors = 0
-    total = len(accepted)
-    for index, (filename, payload) in enumerate(accepted, start=1):
-        try:
-            parsed.append(parse_report_bytes(payload, source_name=filename))
-        except ParseError:
-            parse_errors += 1
-            if stop_on_error:
-                raise
-        if _should_emit_progress(index, total):
-            _emit_progress(
-                progress_callback,
-                phase="parse",
-                processed=index,
-                total=total,
-                parse_errors=parse_errors,
-                workers=1,
-            )
-    return parsed, parse_errors
+    return _parse_sequential(
+        items=accepted,
+        parse_item=_parse_uploaded_item,
+        stop_on_error=stop_on_error,
+        progress_callback=progress_callback,
+        workers=1,
+    )
 
 
 def _parse_paths_parallel(
@@ -386,42 +390,13 @@ def _parse_paths_parallel(
     workers: int,
     progress_callback: ProgressCallback | None,
 ) -> tuple[list, int]:
-    parsed = []
-    parse_errors = 0
-    total = len(candidates)
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        pending: set[Future] = {
-            executor.submit(parse_report_file, path) for path in candidates
-        }
-        processed = 0
-        while pending:
-            done, pending = wait(pending, return_when=FIRST_COMPLETED)
-            for future in done:
-                processed += 1
-                try:
-                    parsed.append(future.result())
-                except ParseError:
-                    parse_errors += 1
-                    if stop_on_error:
-                        for rest in pending:
-                            rest.cancel()
-                        raise
-                except Exception as exc:
-                    parse_errors += 1
-                    if stop_on_error:
-                        for rest in pending:
-                            rest.cancel()
-                        raise ParseError(f"Unexpected parse failure: {exc}") from exc
-                if _should_emit_progress(processed, total):
-                    _emit_progress(
-                        progress_callback,
-                        phase="parse",
-                        processed=processed,
-                        total=total,
-                        parse_errors=parse_errors,
-                        workers=workers,
-                    )
-    return parsed, parse_errors
+    return _parse_parallel(
+        items=candidates,
+        parse_item=parse_report_file,
+        stop_on_error=stop_on_error,
+        workers=workers,
+        progress_callback=progress_callback,
+    )
 
 
 def _parse_uploads_parallel(
@@ -430,14 +405,62 @@ def _parse_uploads_parallel(
     workers: int,
     progress_callback: ProgressCallback | None,
 ) -> tuple[list, int]:
+    return _parse_parallel(
+        items=accepted,
+        parse_item=_parse_uploaded_item,
+        stop_on_error=stop_on_error,
+        workers=workers,
+        progress_callback=progress_callback,
+    )
+
+
+def _parse_uploaded_item(item: tuple[str, bytes]):
+    filename, payload = item
+    return parse_report_bytes(payload, source_name=filename)
+
+
+def _parse_sequential(
+    items,
+    parse_item,
+    stop_on_error: bool,
+    progress_callback: ProgressCallback | None,
+    *,
+    workers: int,
+) -> tuple[list, int]:
     parsed = []
     parse_errors = 0
-    total = len(accepted)
+    total = len(items)
+    for index, item in enumerate(items, start=1):
+        try:
+            parsed.append(parse_item(item))
+        except ParseError:
+            parse_errors += 1
+            if stop_on_error:
+                raise
+        if _should_emit_progress(index, total):
+            _emit_progress(
+                progress_callback,
+                phase="parse",
+                processed=index,
+                total=total,
+                parse_errors=parse_errors,
+                workers=workers,
+            )
+    return parsed, parse_errors
+
+
+def _parse_parallel(
+    items,
+    parse_item,
+    stop_on_error: bool,
+    workers: int,
+    progress_callback: ProgressCallback | None,
+) -> tuple[list, int]:
+    parsed = []
+    parse_errors = 0
+    total = len(items)
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        pending: set[Future] = {
-            executor.submit(parse_report_bytes, payload, filename)
-            for filename, payload in accepted
-        }
+        pending: set[Future] = {executor.submit(parse_item, item) for item in items}
         processed = 0
         while pending:
             done, pending = wait(pending, return_when=FIRST_COMPLETED)
@@ -518,7 +541,9 @@ def _autotune_parse_workers(
 
     if not timings:
         return None
-    return min(timings.items(), key=lambda item: item[1])[0]
+    winner = min(timings.items(), key=lambda item: item[1])[0]
+    _LOG.info("Auto-tuning selected %d parser workers", winner)
+    return winner
 
 
 def _worker_options_for_system() -> list[int]:
@@ -576,3 +601,4 @@ def _save_tuned_workers(workers: int) -> None:
         "updated_at_epoch": int(time.time()),
     }
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    _LOG.debug("Saved parser worker tuning: %d workers", payload["workers"])

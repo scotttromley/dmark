@@ -1,0 +1,597 @@
+const statusEl = document.getElementById("status");
+const metricsEl = document.getElementById("metrics");
+const tableWrapEl = document.getElementById("tableWrap");
+const trendWrapEl = document.getElementById("trendWrap");
+
+function setStatus(message, isError = false) {
+    statusEl.textContent = message;
+    statusEl.className = isError ? "status error" : "status";
+}
+
+function fmtPct(value) {
+    const n = Number(value || 0);
+    return (n * 100).toFixed(2) + "%";
+}
+
+function esc(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function renderMetrics(data) {
+    const cards = [
+        ["Files Scanned", data.files_scanned || 0],
+        ["Files Parsed", data.files_parsed || 0],
+        ["Parse Errors", data.parse_errors || 0],
+        ["Duplicates", data.duplicate_reports_skipped || 0],
+        ["Domains", (data.domains || []).length]
+    ];
+
+    if (data.pst) {
+        cards.push(["PST Extracted", data.pst.extracted_files || 0]);
+    }
+
+    metricsEl.innerHTML = cards.map(([k, v]) =>
+        `<div class="metric"><div class="k">${k}</div><div class="v">${v}</div></div>`
+    ).join("");
+}
+
+function severityClass(severity) {
+    const value = String(severity || "low").toLowerCase();
+    if (value === "critical" || value === "high") return "sev sev-high";
+    if (value === "medium") return "sev sev-medium";
+    return "sev sev-low";
+}
+
+function _chartSeriesPoints(values, width, height, pad, maxOverride = null) {
+    if (!values.length) return "";
+    const maxRaw = maxOverride == null ? Math.max(...values) : Number(maxOverride || 0);
+    const min = 0;
+    const max = maxRaw <= min ? (min + 1) : maxRaw;
+    return values.map((value, index) => {
+        const x = pad + (index * (width - pad * 2)) / Math.max(1, values.length - 1);
+        const y = height - pad - ((Number(value || 0) - min) / (max - min)) * (height - pad * 2);
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+    }).join(" ");
+}
+
+function _buildStackedVolumeChart(series) {
+    if (!Array.isArray(series) || !series.length) {
+        return "<div class='mini'>No time-series points available.</div>";
+    }
+    const width = 760;
+    const height = 170;
+    const pad = 18;
+    const totalValues = series.map((row) => Number(row.messages_total || 0));
+    const maxTotal = Math.max(1, ...totalValues);
+    const step = (width - pad * 2) / Math.max(1, series.length);
+    const barWidth = Math.max(1, step * 0.75);
+    const scale = (height - pad * 2) / maxTotal;
+    let rects = "";
+
+    series.forEach((row, index) => {
+        const approved = Number(row.approved_messages || 0);
+        const noise = Number(row.noise_messages || 0);
+        const pending = Number(row.pending_review_messages || 0);
+        const x = pad + (index * step) + Math.max(0, (step - barWidth) / 2);
+        let y = height - pad;
+        [
+            { value: approved, color: "#3a9a6b" },
+            { value: noise, color: "#9aa4ab" },
+            { value: pending, color: "#de8a3a" },
+        ].forEach((segment) => {
+            const rawHeight = Math.max(0, segment.value * scale);
+            const h = rawHeight > 0 ? Math.max(rawHeight, 0.8) : 0;
+            if (h <= 0) return;
+            y -= h;
+            rects += `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${h.toFixed(2)}" fill="${segment.color}" opacity="0.95" />`;
+        });
+    });
+
+    const labels = series.map((row) => String(row.date || ""));
+    const startLabel = labels[0] || "-";
+    const endLabel = labels[labels.length - 1] || "-";
+    const latest = series[series.length - 1] || {};
+    const avg = totalValues.reduce((sum, value) => sum + Number(value || 0), 0) / Math.max(1, totalValues.length);
+    return `
+    <svg class="sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">
+      <line x1="${pad}" y1="${height - pad}" x2="${width - pad}" y2="${height - pad}" stroke="#c6d3d1" stroke-width="1" />
+      ${rects}
+    </svg>
+    <div class="trend-meta">
+      <span>${esc(startLabel)} -> ${esc(endLabel)}</span>
+      <span>Latest total: ${Number(latest.messages_total || 0).toLocaleString()} msgs</span>
+      <span>Avg/day: ${Math.round(avg).toLocaleString()} msgs</span>
+      <span>Breakdown: approved ${Number(latest.approved_messages || 0).toLocaleString()}, noise ${Number(latest.noise_messages || 0).toLocaleString()}, pending ${Number(latest.pending_review_messages || 0).toLocaleString()}</span>
+    </div>
+    <div class="trend-meta">
+      <span><strong style="color:#3a9a6b">Approved</strong></span>
+      <span><strong style="color:#9aa4ab">Receiver-side noise</strong></span>
+      <span><strong style="color:#de8a3a">Pending review / attack pressure</strong></span>
+    </div>
+  `;
+}
+
+function _buildSplitFailRateChart(series) {
+    if (!Array.isArray(series) || !series.length) {
+        return "<div class='mini'>No time-series points available.</div>";
+    }
+    const width = 760;
+    const height = 160;
+    const pad = 18;
+    const labels = series.map((row) => String(row.date || ""));
+    const legitValues = series.map((row) => Number(row.legitimate_fail_rate || 0) * 100);
+    const attackValues = series.map((row) => Number(row.attack_pressure_fail_rate || 0) * 100);
+    const maxValue = Math.max(1, ...legitValues, ...attackValues);
+    const legitPoints = _chartSeriesPoints(legitValues, width, height, pad, maxValue);
+    const attackPoints = _chartSeriesPoints(attackValues, width, height, pad, maxValue);
+    const latestLegit = Number(legitValues[legitValues.length - 1] || 0);
+    const latestAttack = Number(attackValues[attackValues.length - 1] || 0);
+    const peakAttack = Math.max(...attackValues);
+    const startLabel = labels[0] || "-";
+    const endLabel = labels[labels.length - 1] || "-";
+    return `
+    <svg class="sparkline fail" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">
+      <polyline fill="none" stroke="#b6402a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" points="${legitPoints}" />
+      <polyline fill="none" stroke="#7f8a90" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 4" points="${attackPoints}" />
+    </svg>
+    <div class="trend-meta">
+      <span>${esc(startLabel)} -> ${esc(endLabel)}</span>
+      <span>Latest legitimate fail: ${latestLegit.toFixed(2)}%</span>
+      <span>Latest attack-pressure fail: ${latestAttack.toFixed(2)}%</span>
+      <span>Peak attack-pressure fail: ${peakAttack.toFixed(2)}%</span>
+    </div>
+    <div class="trend-meta">
+      <span><strong style="color:#b6402a">Solid red: legitimate fail rate</strong></span>
+      <span><strong style="color:#7f8a90">Dashed gray: attack-pressure fail rate</strong></span>
+    </div>
+  `;
+}
+
+function renderTrendCharts(domains) {
+    if (!Array.isArray(domains) || !domains.length) {
+        trendWrapEl.innerHTML = "";
+        return;
+    }
+    const cards = domains.map((domain) => {
+        const series = Array.isArray(domain.time_series) ? domain.time_series.slice(-120) : [];
+        if (!series.length) {
+            return `
+        <article class="trend-card">
+          <h3>${esc(domain.domain || "unknown")} Trends</h3>
+          <div class="mini">No date-bucketed trend data available in this run.</div>
+        </article>
+      `;
+        }
+        const volumeChart = _buildStackedVolumeChart(series);
+        const failChart = _buildSplitFailRateChart(series);
+        return `
+      <article class="trend-card">
+        <h3>${esc(domain.domain || "unknown")} Trends</h3>
+        <div class="trend-chart">
+          <div class="label">Daily Message Volume By Source Category (UTC buckets)</div>
+          ${volumeChart}
+        </div>
+        <div class="trend-chart">
+          <div class="label">Daily Fail Rates: Legitimate Risk vs Attack Pressure (UTC buckets)</div>
+          ${failChart}
+        </div>
+      </article>
+    `;
+    }).join("");
+    trendWrapEl.innerHTML = cards;
+}
+
+function renderDomains(data) {
+    const domains = Array.isArray(data.domains) ? data.domains : [];
+    if (!domains.length) {
+        tableWrapEl.innerHTML = "<p class='hint'>No domain summaries were returned.</p>";
+        trendWrapEl.innerHTML = "";
+        return;
+    }
+
+    const rows = domains.map((d) => {
+        const topSources = (d.top_failing_sources || []).slice(0, 3);
+        const topSourcesHtml = topSources.length
+            ? topSources.map((item) => {
+                const host = item.hostname ? ` -> ${esc(item.hostname)}` : "";
+                const sourceClass = item.classification && item.classification !== "unknown"
+                    ? `<div class="mini">${esc(item.classification.replace(/_/g, " "))} (${esc(item.classification_confidence || "low")})</div>`
+                    : "";
+                const evidence = item.evidence_details || {};
+                const topHeader = Array.isArray(evidence.top_header_from) && evidence.top_header_from.length
+                    ? String(evidence.top_header_from[0].name || "")
+                    : "";
+                const topEnvelope = Array.isArray(evidence.top_envelope_from) && evidence.top_envelope_from.length
+                    ? String(evidence.top_envelope_from[0].name || "")
+                    : "";
+                const topSelector = Array.isArray(evidence.top_dkim_selectors) && evidence.top_dkim_selectors.length
+                    ? String(evidence.top_dkim_selectors[0].name || "")
+                    : "";
+                const topOverride = Array.isArray(evidence.top_override_reasons) && evidence.top_override_reasons.length
+                    ? String(evidence.top_override_reasons[0].name || "")
+                    : "";
+                const topDisposition = Array.isArray(evidence.top_dispositions) && evidence.top_dispositions.length
+                    ? String(evidence.top_dispositions[0].name || "")
+                    : "";
+                const investigationConf = item.investigation_confidence
+                    ? `<div class="mini">Investigation confidence: ${esc(item.investigation_confidence)}</div>`
+                    : "";
+                const investigationNote = item.investigation_note
+                    ? `<div class="mini">${esc(item.investigation_note)}</div>`
+                    : "";
+                const evidenceLine = (topHeader || topEnvelope || topSelector || topOverride)
+                    ? `<div class="mini">Hdr: ${esc(topHeader || "-")} | Env: ${esc(topEnvelope || "-")} | Sel: ${esc(topSelector || "-")} | Ovrd: ${esc(topOverride || "-")} | Disp: ${esc(topDisposition || "-")}</div>`
+                    : "";
+                const evidenceDrawer = evidenceLine
+                    ? `<details class="mini"><summary>Evidence (aggregate record buckets)</summary>${evidenceLine}</details>`
+                    : "";
+                return `<div class="mono">${esc(item.source_ip)} (${item.message_count})${host}${sourceClass}${investigationConf}${investigationNote}${evidenceDrawer}</div>`;
+            }).join("")
+            : "-";
+        const healthCauses = (d.health_score_causes || []).slice(0, 3);
+        const healthCausesHtml = healthCauses.length
+            ? healthCauses.map((item) => `<div>${esc(item)}</div>`).join("")
+            : "<div class='mini'>No score penalties observed.</div>";
+        const issues = (d.issues || []).slice(0, 3);
+        const issuesHtml = issues.length
+            ? issues.map((issue) => {
+                const sev = String(issue.severity || "low").toLowerCase();
+                const cat = String(issue.category || "general").toLowerCase();
+                const conf = String(issue.confidence || "low").toLowerCase();
+                const sevClass = severityClass(sev);
+                const title = esc(issue.title || "Issue");
+                const categoryLabel = esc(cat.replace(/_/g, " "));
+                const evidence = issue.evidence ? `<div class="mini">${esc(issue.evidence)}</div>` : "";
+                const cause = issue.likely_cause ? `<div class="mini">Cause: ${esc(issue.likely_cause)}</div>` : "";
+                const taxonomy = `<div class="mini">${categoryLabel} <span class="conf">${esc(conf)} confidence</span></div>`;
+                return `<div><span class="${sevClass}">${esc(sev)}</span>${title}${taxonomy}${evidence}${cause}</div>`;
+            }).join("")
+            : "<div class='mini'>No diagnosed issues.</div>";
+        const actionPlan = (d.action_plan || []).slice(0, 5);
+        const actionPlanHtml = actionPlan.length
+            ? actionPlan.map((step, index) => `<div>${index + 1}. ${esc(step)}</div>`).join("")
+            : "-";
+        const senderInventory = (d.sender_inventory || []).slice(0, 3);
+        const senderInventoryHtml = senderInventory.length
+            ? senderInventory.map((item) => {
+                const flagNew = item.new_since_last_run ? "new" : "";
+                const flagApproved = item.approved_sender ? "approved" : "";
+                const flags = [flagApproved, flagNew].filter(Boolean).join(", ");
+                const host = item.hostname ? ` -> ${esc(item.hostname)}` : "";
+                const share = fmtPct(item.message_share_rate);
+                const badge = flags ? `<div class="mini">${esc(flags)}</div>` : "";
+                const legitStatusLabel = item.legit_status_label || item.legit_status || "pending_review";
+                const cls = item.classification && item.classification !== "unknown"
+                    ? `<div class="mini">${esc(item.classification.replace(/_/g, " "))} / ${esc(legitStatusLabel)}</div>`
+                    : "";
+                const actionLabel = item.suggested_action_label || item.suggested_action || "";
+                const normalizedAction = String(actionLabel || "").toLowerCase().replace(/_/g, " ");
+                const action = normalizedAction && normalizedAction !== "investigate"
+                    ? `<div class="mini">Action: ${esc(String(actionLabel).replace(/_/g, " "))}</div>`
+                    : "";
+                return `<div class="mono">${esc(item.source_ip)} (${item.message_count}, ${share})${host}${badge}${cls}${action}</div>`;
+            }).join("")
+            : "-";
+        const dkimAuthAlignHtml = `
+      <div>Auth: <strong>${fmtPct(d.dkim_auth_pass_rate)}</strong></div>
+      <div>Align: <strong>${fmtPct(d.dkim_aligned_pass_rate)}</strong></div>
+      <div class="mini">Gap: ${fmtPct(d.dkim_alignment_gap_rate)}</div>
+    `;
+        const spfAuthAlignHtml = `
+      <div>Auth: <strong>${fmtPct(d.spf_auth_pass_rate)}</strong></div>
+      <div>Align: <strong>${fmtPct(d.spf_aligned_pass_rate)}</strong></div>
+      <div class="mini">Gap: ${fmtPct(d.spf_alignment_gap_rate)}</div>
+    `;
+        const sim = d.policy_impact_simulation || {};
+        const q100 = sim.quarantine_100 || {};
+        const r100 = sim.reject_100 || {};
+        const legitBasis = d.legitimate_basis || {};
+        const dns = d.dns_diagnostics || {};
+        const policyImpactHtml = `
+      <div class="mini">Basis: ${esc(sim.basis || "all_observed_traffic")}</div>
+      <div>quarantine pct=100: ${q100.estimated_legitimate_impacted_messages || 0} legit msgs (${fmtPct(q100.estimated_legitimate_impacted_rate)})</div>
+      <div class="mini">All traffic: ${q100.estimated_impacted_messages || 0} msgs (${fmtPct(q100.estimated_impacted_rate)})</div>
+      <div>reject pct=100: ${r100.estimated_legitimate_impacted_messages || 0} legit msgs (${fmtPct(r100.estimated_legitimate_impacted_rate)})</div>
+      <div class="mini">All traffic: ${r100.estimated_impacted_messages || 0} msgs (${fmtPct(r100.estimated_impacted_rate)})</div>
+    `;
+        const policy = `${d.dominant_policy || "unknown"} (${(Number(d.policy_consistency || 0) * 100).toFixed(0)}%, pct ${Number(d.average_policy_pct || 100).toFixed(0)})`;
+        const dnsStatusHtml = dns.enabled
+            ? `<div class="mini">DNS: DMARC ${dns.dmarc_record_found ? "ok" : "missing"}, SPF ${dns.spf_record_found ? "ok" : "missing"}, M365 DKIM ${esc(dns.m365_dkim_status || "unknown")}</div>`
+            : "";
+        const trendTitle = esc(d.historical_trend_score_title || "Historical Trend Score");
+        const trendDescription = d.historical_trend_score_description
+            ? `<div class="mini">${esc(d.historical_trend_score_description)}</div>`
+            : "";
+        const aggregateEvidenceNote = d.aggregate_evidence_note
+            ? `<div class="mini">${esc(d.aggregate_evidence_note)}</div>`
+            : "";
+        const health = `${d.historical_trend_score || d.health_score || 0} ${d.historical_trend_label || d.health_label || ""}`.trim();
+        const deliverability = Number(d.deliverability_safety_score || 0).toFixed(0);
+        const posture = Number(d.anti_spoofing_posture_score || 0).toFixed(0);
+        const protectionScore = Number(d.protection_posture_score || d.anti_spoofing_posture_score || 0).toFixed(0);
+        const protectionGrade = esc(d.protection_posture_grade || "-");
+        const authCoverage = fmtPct(d.authentication_coverage_rate);
+        const authCoverageDkim = fmtPct(d.authentication_coverage_dkim_rate);
+        const authCoverageSpf = fmtPct(d.authentication_coverage_spf_rate);
+        const attackPressureLabel = esc(d.attack_pressure_label || d.attack_pressure_level || "Unknown");
+        const attackPressureRate = fmtPct(d.attack_pressure_fail_rate);
+        const attackPressureCount = d.attack_pressure_fail_count || 0;
+        const scoreConfidence = esc(d.score_confidence || "low");
+        const readinessLabel = d.enforcement_readiness || "-";
+        const readinessDetail = d.enforcement_readiness_detail ? `<div class="mini">${esc(d.enforcement_readiness_detail)}</div>` : "";
+        const readinessBasis = d.readiness_gate && d.readiness_gate.basis ? `<div class="mini">Basis: ${esc(d.readiness_gate.basis)}</div>` : "";
+        const healthSummary = d.health_score_summary ? `<div class="mini">${esc(d.health_score_summary)}</div>` : "";
+        const receiverSideNote = d.receiver_side_security_relay_note
+            ? `<div class="mini">${esc(d.receiver_side_security_relay_note)}</div>`
+            : "";
+        const safetyNote = d.deliverability_safety_note
+            ? `<div class="mini">${esc(d.deliverability_safety_note)}</div>`
+            : "";
+        const attackPressureNote = d.attack_pressure_note
+            ? `<div class="mini">${esc(d.attack_pressure_note)}</div>`
+            : "";
+        const senderSummary = d.sender_inventory_summary || {};
+        const senderSummaryHtml = `
+      <div class="mini">Approved: ${fmtPct(senderSummary.approved_rate)} (${senderSummary.approved_messages || 0} msgs)</div>
+      <div class="mini">Noise excluded: ${fmtPct(senderSummary.noise_rate)} (${senderSummary.noise_messages || 0} msgs)</div>
+      <div class="mini">Pending review: ${fmtPct(senderSummary.pending_review_rate)} (${senderSummary.pending_review_messages || 0} msgs)</div>
+    `;
+        const legitBasisDetail = `
+      <div class="mini">Legit basis: ${esc(legitBasis.basis || "all_observed_traffic")}</div>
+      <div class="mini">Coverage: ${fmtPct(legitBasis.coverage_rate)} (${legitBasis.messages_total || 0} msgs)</div>
+      <div class="mini">Noise excluded: ${legitBasis.noise_messages_excluded || 0} msgs</div>
+    `;
+
+        return `
+      <tr>
+        <td class="mono domain-col">${esc(d.domain || "unknown")}</td>
+        <td>${d.messages_total || 0}</td>
+        <td>${esc(policy)}${dnsStatusHtml}</td>
+        <td class="health-col">
+          <div><strong>Protection posture: ${protectionGrade} (${protectionScore})</strong> <span class="mini">${scoreConfidence} confidence</span></div>
+          <div class="mini">${trendTitle}: ${esc(health)}</div>
+          <div class="mini">Deliverability safety: ${deliverability}</div>
+          <div class="mini">Anti-spoofing posture: ${posture}</div>
+          <div class="mini">Authentication coverage: ${authCoverage} (DKIM ${authCoverageDkim} / SPF ${authCoverageSpf})</div>
+          <div class="mini">Attack pressure: ${attackPressureLabel} (${attackPressureRate}, ${attackPressureCount} fails)</div>
+          ${trendDescription}
+          ${aggregateEvidenceNote}
+          ${healthSummary}
+          ${safetyNote}
+          ${attackPressureNote}
+          ${receiverSideNote}
+        </td>
+        <td class="drivers-col stack">${healthCausesHtml}</td>
+        <td><div>${esc(readinessLabel)}</div>${readinessDetail}${readinessBasis}${legitBasisDetail}</td>
+        <td>${fmtPct(d.dmarc_pass_rate)}</td>
+        <td>${fmtPct(d.dmarc_fail_rate)}</td>
+        <td class="auth-col stack">${dkimAuthAlignHtml}</td>
+        <td class="auth-col stack">${spfAuthAlignHtml}</td>
+        <td class="impact-col stack">${policyImpactHtml}</td>
+        <td class="sources-col stack">${senderSummaryHtml}${senderInventoryHtml}</td>
+        <td class="sources-col stack">${topSourcesHtml}</td>
+        <td class="issues-col stack">${issuesHtml}</td>
+        <td class="actions-col stack">${actionPlanHtml}</td>
+      </tr>
+    `;
+    }).join("");
+
+    tableWrapEl.innerHTML = `
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Domain</th>
+            <th>Messages</th>
+            <th>Policy</th>
+            <th>Posture & Trend</th>
+            <th>Trend Drivers</th>
+            <th>Readiness</th>
+            <th>DMARC Pass</th>
+            <th>DMARC Fail</th>
+            <th>DKIM Auth/Align</th>
+            <th>SPF Auth/Align</th>
+            <th>Policy Impact Simulator</th>
+            <th>Top Senders</th>
+            <th>Top Failing Sources</th>
+            <th>Key Issues</th>
+            <th>Action Plan</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+    renderTrendCharts(domains);
+}
+
+async function parsePayload(response) {
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+        return await response.json();
+    }
+    const text = await response.text();
+    return { error: text || "Request failed" };
+}
+
+async function handleResponse(response) {
+    const payload = await parsePayload(response);
+    if (!response.ok) {
+        throw new Error(payload.error || "Request failed");
+    }
+    renderMetrics(payload);
+    renderDomains(payload);
+    if (payload.pst && payload.pst.engine_used) {
+        setStatus(`Analysis complete. PST engine: ${payload.pst.engine_used}`);
+    } else {
+        setStatus("Analysis complete.");
+    }
+}
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function pollPstJob(jobId) {
+    const startedAt = Date.now();
+    while (true) {
+        const response = await fetch(`/api/pst-job/${encodeURIComponent(jobId)}`);
+        const payload = await parsePayload(response);
+        if (!response.ok) {
+            throw new Error(payload.error || "Could not fetch PST job status.");
+        }
+
+        const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+        const message = payload.message || "Working...";
+
+        if (payload.status === "complete") {
+            if (payload.result) {
+                renderMetrics(payload.result);
+                renderDomains(payload.result);
+            }
+            setStatus(`${message} (${elapsed}s)`);
+            return;
+        }
+
+        if (payload.status === "error") {
+            throw new Error(payload.error || message || "PST analysis failed.");
+        }
+
+        setStatus(`${message} (${elapsed}s)`);
+        await sleep(1500);
+    }
+}
+
+function resetOutput() {
+    metricsEl.innerHTML = "";
+    tableWrapEl.innerHTML = "";
+    trendWrapEl.innerHTML = "";
+}
+
+async function loadCapabilities() {
+    try {
+        const response = await fetch("/api/capabilities");
+        const payload = await parsePayload(response);
+        if (!response.ok || !payload.pst_extractors) {
+            return;
+        }
+        const caps = payload.pst_extractors;
+        if (!caps.pypff && !caps.readpst && !caps.pstparse_dotnet) {
+            setStatus("PST extraction backend missing: install pypff, readpst, or PSTParse .NET helper.", true);
+        }
+    } catch (_err) {
+        // Keep default status text if capabilities check fails.
+    }
+}
+
+document.getElementById("installPstparseBtn").addEventListener("click", async () => {
+    setStatus("Building PSTParse .NET helper...");
+    try {
+        const response = await fetch("/api/install-pstparse-dotnet", { method: "POST" });
+        const payload = await parsePayload(response);
+        if (!response.ok) {
+            throw new Error(payload.message || payload.error || "Install failed");
+        }
+        setStatus(payload.message || "PSTParse helper installed.");
+        await loadCapabilities();
+    } catch (err) {
+        setStatus(err.message || "PSTParse install failed.", true);
+    }
+});
+
+document.getElementById("pathForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    setStatus("Analyzing path...");
+    resetOutput();
+
+    const path = document.getElementById("path").value;
+    const minFail = document.getElementById("pathFail").value;
+    const minMessages = document.getElementById("pathMinMessages").value;
+
+    try {
+        const response = await fetch("/api/analyze-path", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                path: path,
+                min_fail_rate_alert: minFail,
+                min_messages_alert: minMessages
+            })
+        });
+        await handleResponse(response);
+    } catch (err) {
+        setStatus(err.message || "Analysis failed.", true);
+    }
+});
+
+document.getElementById("uploadForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    setStatus("Uploading and analyzing XML files...");
+    resetOutput();
+
+    const fileInput = document.getElementById("files");
+    if (!fileInput.files || !fileInput.files.length) {
+        setStatus("Select at least one file.", true);
+        return;
+    }
+
+    const form = new FormData();
+    for (const file of fileInput.files) {
+        form.append("files", file, file.name);
+    }
+    form.append("min_fail_rate_alert", document.getElementById("uploadFail").value);
+    form.append("min_messages_alert", document.getElementById("uploadMinMessages").value);
+
+    try {
+        const response = await fetch("/api/analyze-upload", {
+            method: "POST",
+            body: form
+        });
+        await handleResponse(response);
+    } catch (err) {
+        setStatus(err.message || "Upload analysis failed.", true);
+    }
+});
+
+document.getElementById("pstForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    setStatus("Uploading PST and extracting DMARC reports...");
+    resetOutput();
+
+    const pstFileInput = document.getElementById("pstFile");
+    if (!pstFileInput.files || !pstFileInput.files.length) {
+        setStatus("Select a PST file.", true);
+        return;
+    }
+
+    const form = new FormData();
+    form.append("pst_file", pstFileInput.files[0], pstFileInput.files[0].name);
+    form.append("engine", document.getElementById("pstEngine").value);
+    form.append("min_fail_rate_alert", document.getElementById("pstFail").value);
+    form.append("min_messages_alert", document.getElementById("pstMinMessages").value);
+
+    try {
+        const response = await fetch("/api/analyze-pst-upload", {
+            method: "POST",
+            body: form
+        });
+        const payload = await parsePayload(response);
+        if (!response.ok) {
+            throw new Error(payload.error || "PST analysis failed.");
+        }
+        if (!payload.job_id) {
+            throw new Error("Server did not return a PST job id.");
+        }
+        setStatus(payload.message || "PST upload accepted.");
+        await pollPstJob(payload.job_id);
+    } catch (err) {
+        setStatus(err.message || "PST analysis failed.", true);
+    }
+});
+
+loadCapabilities();

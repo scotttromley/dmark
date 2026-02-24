@@ -1,0 +1,532 @@
+{
+  "action_plan": [
+    "Collect at least 7 days of DMARC aggregate reports before policy changes.",
+    "If fail rate is stable <=1%, move to p=quarantine with pct=25 for a staged rollout.",
+    "Increase pct to 100 once legitimate traffic impact is validated.",
+    "Move to p=reject after at least one stable reporting cycle.",
+    "Enable DKIM signing for each sender platform using your domain or aligned subdomain.",
+    "Validate DKIM selectors and key DNS records for each sending service.",
+    "Check forwarding/list transformations that may invalidate DKIM signatures.",
+    "Publish SPF on aligned envelope-from domains for each sending platform.",
+    "Confirm MAIL FROM domains are aligned to the visible header-from domain.",
+    "Audit envelope-from domains used by each sender and align them to your domain.",
+    "Update SPF include chains for all legitimate senders.",
+    "Prioritize investigation and remediation of the top failing source first.",
+    "Confirm whether that source is an approved sender, then fix or block it.",
+    "Prioritize DKIM alignment for legitimate sender paths because DKIM survives forwarding better than SPF.",
+    "Review override-reason traffic before treating all failures as malicious."
+  ],
+  "aggregate_evidence_note": "DMARC aggregate reports are record-level summaries, not message-level traces.",
+  "anti_spoofing_posture_breakdown": [
+    {
+      "detail": "Dominant policy is none.",
+      "factor": "Published policy posture",
+      "points": 30.0
+    },
+    {
+      "detail": "Policy pct does not reduce spoof-blocking coverage.",
+      "factor": "Policy pct reduction",
+      "points_lost": 0.0
+    },
+    {
+      "detail": "Monitor-only posture leaves failing traffic un-enforced.",
+      "factor": "Monitor-mode exposure",
+      "points_lost": 20.0
+    }
+  ],
+  "anti_spoofing_posture_score": 10,
+  "approved_sender_count": 1,
+  "attack_pressure_fail_count": 9,
+  "attack_pressure_fail_rate": 0.264706,
+  "attack_pressure_label": "High",
+  "attack_pressure_level": "high",
+  "attack_pressure_note": "Attack pressure reflects unauthorized DMARC failures outside approved sender traffic.",
+  "auth_breakdown": {
+    "both_pass_rate": 0.0,
+    "dkim_only_pass_rate": 0.735294,
+    "neither_pass_rate": 0.264706,
+    "spf_only_pass_rate": 0.0
+  },
+  "authentication_coverage_blended_rate": 0.5,
+  "authentication_coverage_dkim_rate": 1.0,
+  "authentication_coverage_rate": 1.0,
+  "authentication_coverage_spf_rate": 0.0,
+  "auto_approved_sender_count": 1,
+  "average_policy_pct": 100.0,
+  "deliverability_safety_breakdown": [
+    {
+      "detail": "0.00% fail rate on traffic used for readiness.",
+      "factor": "Legitimate DMARC fail rate",
+      "points_lost": 0.0
+    },
+    {
+      "detail": "No additional enforcing-policy delivery risk applied.",
+      "factor": "Active enforcement risk",
+      "points_lost": 0.0
+    },
+    {
+      "detail": "Low message volume lowers confidence in safe-enforcement conclusions.",
+      "factor": "Sample confidence",
+      "points_lost": 8.0
+    },
+    {
+      "detail": "Policy pct coverage does not reduce safety score.",
+      "factor": "Policy pct coverage",
+      "points_lost": 0.0
+    }
+  ],
+  "deliverability_safety_note": "No deliverability-safety penalty applied: observed failures are outside the readiness basis (approved_and_auto_approved_non_noise_senders) and do not impact currently approved sender traffic.",
+  "deliverability_safety_score": 92,
+  "disposition_counts": {
+    "none": 34
+  },
+  "dkim_aligned_pass_rate": 0.735294,
+  "dkim_alignment_gap_rate": 0.0,
+  "dkim_auth_pass_rate": 0.735294,
+  "dmarc_fail_count": 9,
+  "dmarc_fail_rate": 0.264706,
+  "dmarc_pass_count": 25,
+  "dmarc_pass_rate": 0.735294,
+  "dns_diagnostics": {
+    "domain": "example.com",
+    "enabled": false,
+    "reason": "DNS diagnostics disabled for this run."
+  },
+  "domain": "example.com",
+  "dominant_policy": "none",
+  "enforcement_observed_rate": 0.0,
+  "enforcement_readiness": "insufficient_data",
+  "enforcement_readiness_detail": "Only 25 messages in readiness basis (approved_and_auto_approved_non_noise_senders). Gather more data before policy changes.",
+  "evidence_overview": {
+    "top_dkim_selectors": [
+      {
+        "message_count": 25,
+        "name": "s1"
+      }
+    ],
+    "top_envelope_from": [
+      {
+        "message_count": 25,
+        "name": "mailer.example.com"
+      },
+      {
+        "message_count": 9,
+        "name": "bad-domain.net"
+      }
+    ],
+    "top_header_from": [
+      {
+        "message_count": 34,
+        "name": "example.com"
+      }
+    ],
+    "top_override_reasons": [
+      {
+        "message_count": 25,
+        "name": "forwarded"
+      }
+    ],
+    "top_reporters": [
+      {
+        "name": "Receiver Inc",
+        "report_count": 2
+      }
+    ],
+    "top_spf_alignment_gap_pairs": []
+  },
+  "health_label": "critical",
+  "health_score": 0,
+  "health_score_breakdown": [
+    {
+      "detail": "26.47% of messages fail DMARC.",
+      "factor": "DMARC fail rate",
+      "points_lost": 50.0
+    },
+    {
+      "detail": "Best aligned method coverage is 73.53% (target >= 95%).",
+      "factor": "Aligned auth best-path coverage",
+      "points_lost": 42.94
+    },
+    {
+      "detail": "Combined DKIM/SPF aligned coverage is 36.76% (target >= 85%).",
+      "factor": "Aligned auth blended coverage",
+      "points_lost": 28.94
+    },
+    {
+      "detail": "Monitor-only policy (p=none) carries small score penalty.",
+      "factor": "Policy posture",
+      "points_lost": 5.0
+    }
+  ],
+  "health_score_causes": [
+    "Historical trend score: DMARC fail rate cost 50.0 points: 26.47% of messages fail DMARC.",
+    "Historical trend score: Aligned auth best-path coverage cost 42.9 points: Best aligned method coverage is 73.53% (target >= 95%).",
+    "Historical trend score: Aligned auth blended coverage cost 28.9 points: Combined DKIM/SPF aligned coverage is 36.76% (target >= 85%)."
+  ],
+  "health_score_summary": "Historical Trend Score uses all observed traffic and subtracts points for DMARC failures, weak aligned authentication coverage, and monitor-only policy posture.",
+  "historical_trend_label": "critical",
+  "historical_trend_score": 0,
+  "historical_trend_score_description": "Historical Trend Score uses all observed traffic (including receiver-side noise) for long-term visibility. Deliverability Safety is the enforcement-risk metric.",
+  "historical_trend_score_title": "Historical Trend Score",
+  "is_m365_heavy": false,
+  "issues": [
+    {
+      "actions": [
+        "Publish SPF on aligned envelope-from domains for each sending platform.",
+        "Confirm MAIL FROM domains are aligned to the visible header-from domain."
+      ],
+      "category": "legitimate_misconfiguration",
+      "confidence": "low",
+      "evidence": "SPF auth pass count is zero.",
+      "evidence_details": {
+        "spf_aligned_pass_rate": 0.0,
+        "spf_auth_pass_rate": 0.0
+      },
+      "id": "no_spf_authentication",
+      "likely_cause": "SPF records may be missing, broken, or not published for active sender envelope domains.",
+      "severity": "high",
+      "title": "No SPF authentication passes were observed."
+    },
+    {
+      "actions": [
+        "Prioritize investigation and remediation of the top failing source first.",
+        "Confirm whether that source is an approved sender, then fix or block it."
+      ],
+      "category": "unauthorized_or_misconfigured_sources",
+      "confidence": "low",
+      "evidence": "198.51.100.9 accounts for 100.0% of failing messages (9 of 9).",
+      "evidence_details": {
+        "top_failing_source": "198.51.100.9",
+        "top_failing_source_messages": 9,
+        "top_failing_source_share": 1.0
+      },
+      "id": "failure_concentration",
+      "likely_cause": "A single sender platform or abuse source is driving most DMARC failures.",
+      "severity": "high",
+      "title": "Failures are concentrated on a narrow source set."
+    },
+    {
+      "actions": [
+        "If fail rate is stable <=1%, move to p=quarantine with pct=25 for a staged rollout.",
+        "Increase pct to 100 once legitimate traffic impact is validated.",
+        "Move to p=reject after at least one stable reporting cycle."
+      ],
+      "category": "policy_posture",
+      "confidence": "low",
+      "evidence": "Published policy is mostly p=none (consistency 100%).",
+      "evidence_details": {
+        "dominant_policy": "none",
+        "fail_rate": 0.264706,
+        "policy_consistency": 1.0
+      },
+      "id": "monitor_only_policy",
+      "likely_cause": "Policy has not been moved into enforcement yet, usually due to unresolved sender coverage.",
+      "severity": "medium",
+      "title": "Domain is still in monitor-only mode (p=none)."
+    },
+    {
+      "actions": [
+        "Enable DKIM signing for each sender platform using your domain or aligned subdomain.",
+        "Validate DKIM selectors and key DNS records for each sending service.",
+        "Check forwarding/list transformations that may invalidate DKIM signatures."
+      ],
+      "category": "alignment_gap",
+      "confidence": "low",
+      "evidence": "DKIM auth pass is 73.53%, but aligned DKIM is 73.53%.",
+      "evidence_details": {
+        "dkim_aligned_pass_rate": 0.735294,
+        "dkim_alignment_gap_rate": 0.0,
+        "dkim_auth_pass_rate": 0.735294,
+        "top_gap_source": null,
+        "top_gap_source_messages": 0
+      },
+      "id": "low_dkim_alignment",
+      "likely_cause": "Some senders are not DKIM-signing with an aligned d= domain, or signatures are getting broken in transit.",
+      "severity": "medium",
+      "title": "DKIM alignment coverage is low."
+    },
+    {
+      "actions": [
+        "Audit envelope-from domains used by each sender and align them to your domain.",
+        "Update SPF include chains for all legitimate senders."
+      ],
+      "category": "alignment_gap",
+      "confidence": "low",
+      "evidence": "DKIM aligned pass is 73.53% vs SPF aligned 0.00% (SPF auth 0.00%).",
+      "evidence_details": {
+        "dkim_aligned_pass_rate": 0.735294,
+        "spf_aligned_pass_rate": 0.0,
+        "spf_auth_pass_rate": 0.0
+      },
+      "id": "spf_trails_dkim",
+      "likely_cause": "SPF may pass on non-aligned envelope domains while DKIM handles most aligned auth.",
+      "severity": "medium",
+      "title": "SPF alignment trails DKIM."
+    },
+    {
+      "actions": [
+        "Collect at least 7 days of DMARC aggregate reports before policy changes."
+      ],
+      "category": "data_quality",
+      "confidence": "high",
+      "evidence": "Only 34 messages observed; thresholds are less reliable.",
+      "evidence_details": {
+        "messages_total": 34,
+        "min_messages_alert": 100
+      },
+      "id": "limited_data",
+      "likely_cause": "Short reporting window or low send volume.",
+      "severity": "low",
+      "title": "Limited report volume."
+    },
+    {
+      "actions": [
+        "Prioritize DKIM alignment for legitimate sender paths because DKIM survives forwarding better than SPF.",
+        "Review override-reason traffic before treating all failures as malicious."
+      ],
+      "category": "infrastructure_signal",
+      "confidence": "low",
+      "evidence": "25 messages include override reasons such as forwarded/trusted_forwarder/mailing_list/local_policy.",
+      "evidence_details": {
+        "override_reason_counts": {
+          "forwarded": 25
+        },
+        "top_override_reason": "forwarded",
+        "top_override_reason_messages": 25
+      },
+      "id": "forwarding_override_signals",
+      "likely_cause": "Forwarding and intermediary handling can break SPF and occasionally DKIM, causing DMARC failures that are not pure spoofing.",
+      "severity": "low",
+      "title": "Forwarding/local-policy override signals were observed."
+    }
+  ],
+  "legitimate_basis": {
+    "approved_senders_configured": 1,
+    "auto_approved_senders_detected": 1,
+    "basis": "approved_and_auto_approved_non_noise_senders",
+    "coverage_rate": 0.735294,
+    "fail_count": 0,
+    "fail_rate": 0.0,
+    "messages_total": 25,
+    "noise_failures_excluded": 0,
+    "noise_messages_excluded": 0,
+    "pass_count": 25,
+    "pass_rate": 1.0
+  },
+  "m365_dkim_carrying_load": false,
+  "m365_failing_messages": 0,
+  "m365_message_count": 0,
+  "m365_message_rate": 0.0,
+  "messages_total": 34,
+  "new_sender_count": 1,
+  "noise_failures_excluded_from_safety": 0,
+  "noise_messages_excluded_from_safety": 0,
+  "policy_consistency": 1.0,
+  "policy_impact_simulation": {
+    "assumptions": [
+      "Projection treats DMARC-failing volume as potentially affected under enforcing policy.",
+      "Actual mailbox outcomes vary by receiver local policy and forwarding behavior."
+    ],
+    "basis": "approved_and_auto_approved_non_noise_senders",
+    "current_policy": {
+      "average_policy_pct": 100.0,
+      "currently_enforced_failures": 0,
+      "currently_enforced_failures_rate": 0.0,
+      "currently_enforced_legitimate_failures": 0,
+      "currently_enforced_legitimate_failures_rate": 0.0,
+      "dominant_policy": "none"
+    },
+    "quarantine_100": {
+      "confidence": "low",
+      "estimated_additional_impacted_messages": 9,
+      "estimated_additional_impacted_rate": 0.264706,
+      "estimated_impacted_messages": 9,
+      "estimated_impacted_rate": 0.264706,
+      "estimated_legitimate_additional_impacted_messages": 0,
+      "estimated_legitimate_additional_impacted_rate": 0.0,
+      "estimated_legitimate_impacted_messages": 0,
+      "estimated_legitimate_impacted_rate": 0.0,
+      "target_policy": "quarantine"
+    },
+    "reject_100": {
+      "confidence": "low",
+      "estimated_additional_impacted_messages": 9,
+      "estimated_additional_impacted_rate": 0.264706,
+      "estimated_impacted_messages": 9,
+      "estimated_impacted_rate": 0.264706,
+      "estimated_legitimate_additional_impacted_messages": 0,
+      "estimated_legitimate_additional_impacted_rate": 0.0,
+      "estimated_legitimate_impacted_messages": 0,
+      "estimated_legitimate_impacted_rate": 0.0,
+      "target_policy": "reject"
+    }
+  },
+  "protection_posture_detail": "Policy none at average pct 100 (consistency 100%).",
+  "protection_posture_grade": "F",
+  "protection_posture_score": 35,
+  "published_policy_counts": {
+    "none": 2
+  },
+  "readiness_gate": {
+    "basis": "approved_and_auto_approved_non_noise_senders",
+    "detail": "Only 25 messages in readiness basis (approved_and_auto_approved_non_noise_senders). Gather more data before policy changes.",
+    "status": "insufficient_data"
+  },
+  "receiver_side_security_relay_fail_count": 0,
+  "receiver_side_security_relay_fail_share": 0.0,
+  "receiver_side_security_relay_note": null,
+  "receiver_side_security_relay_sources": [],
+  "recommendations": [
+    "[high/legitimate_misconfiguration/low] No SPF authentication passes were observed. SPF auth pass count is zero.",
+    "[high/unauthorized_or_misconfigured_sources/low] Failures are concentrated on a narrow source set. 198.51.100.9 accounts for 100.0% of failing messages (9 of 9).",
+    "[medium/policy_posture/low] Domain is still in monitor-only mode (p=none). Published policy is mostly p=none (consistency 100%).",
+    "[medium/alignment_gap/low] DKIM alignment coverage is low. DKIM auth pass is 73.53%, but aligned DKIM is 73.53%."
+  ],
+  "reports_seen": 2,
+  "score_confidence": "low",
+  "sender_inventory": [
+    {
+      "approved_sender": true,
+      "classification": "observed_high_pass_sender",
+      "classification_confidence": "medium",
+      "classification_reason": "Observed sender has >=98% DMARC pass rate and meets auto-approval minimum volume (10 messages) in the current report window.",
+      "dmarc_fail_count": 0,
+      "dmarc_fail_rate": 0.0,
+      "dmarc_pass_count": 25,
+      "dmarc_pass_rate": 1.0,
+      "hostname": null,
+      "legit_status": "approved",
+      "legit_status_label": "approved",
+      "message_count": 25,
+      "message_share_rate": 0.735294,
+      "new_since_last_run": true,
+      "source_ip": "203.0.113.1",
+      "suggested_action": "monitor",
+      "suggested_action_label": "monitor"
+    },
+    {
+      "approved_sender": false,
+      "classification": "unknown",
+      "classification_confidence": "low",
+      "classification_reason": "No source classification rule matched.",
+      "dmarc_fail_count": 9,
+      "dmarc_fail_rate": 1.0,
+      "dmarc_pass_count": 0,
+      "dmarc_pass_rate": 0.0,
+      "hostname": null,
+      "legit_status": "pending_review",
+      "legit_status_label": "pending review",
+      "message_count": 9,
+      "message_share_rate": 0.264706,
+      "new_since_last_run": false,
+      "source_ip": "198.51.100.9",
+      "suggested_action": "investigate",
+      "suggested_action_label": "investigate"
+    }
+  ],
+  "sender_inventory_summary": {
+    "approved_messages": 25,
+    "approved_rate": 0.735294,
+    "noise_messages": 0,
+    "noise_rate": 0.0,
+    "pending_review_messages": 9,
+    "pending_review_rate": 0.264706
+  },
+  "spf_aligned_pass_rate": 0.0,
+  "spf_alignment_gap_rate": 0.0,
+  "spf_auth_pass_rate": 0.0,
+  "time_series": [
+    {
+      "approved_messages": 10,
+      "attack_pressure_fail_count": 5,
+      "attack_pressure_fail_rate": 0.333333,
+      "date": "2023-11-15",
+      "dkim_aligned_pass_rate": 0.666667,
+      "dmarc_fail_count": 5,
+      "dmarc_fail_rate": 0.333333,
+      "dmarc_pass_count": 10,
+      "legitimate_basis_messages": 10,
+      "legitimate_fail_count": 0,
+      "legitimate_fail_rate": 0.0,
+      "messages_total": 15,
+      "noise_messages": 0,
+      "pending_review_messages": 5,
+      "spf_aligned_pass_rate": 0.0
+    },
+    {
+      "approved_messages": 15,
+      "attack_pressure_fail_count": 4,
+      "attack_pressure_fail_rate": 0.210526,
+      "date": "2023-11-16",
+      "dkim_aligned_pass_rate": 0.789474,
+      "dmarc_fail_count": 4,
+      "dmarc_fail_rate": 0.210526,
+      "dmarc_pass_count": 15,
+      "legitimate_basis_messages": 15,
+      "legitimate_fail_count": 0,
+      "legitimate_fail_rate": 0.0,
+      "messages_total": 19,
+      "noise_messages": 0,
+      "pending_review_messages": 4,
+      "spf_aligned_pass_rate": 0.0
+    }
+  ],
+  "time_series_days": 2,
+  "time_series_end": "2023-11-16",
+  "time_series_start": "2023-11-15",
+  "top_failing_source_share": 1.0,
+  "top_failing_sources": [
+    {
+      "action": "investigate",
+      "category": "unknown",
+      "classification": "unknown",
+      "classification_confidence": "low",
+      "classification_reason": "No source classification rule matched.",
+      "dkim_failure_mode": "dkim_auth_fail",
+      "evidence_details": {
+        "aggregate_record_notice": "DMARC aggregate reports provide record-level buckets, not individual email events.",
+        "top_dispositions": [
+          {
+            "message_count": 9,
+            "name": "none"
+          }
+        ],
+        "top_dkim_domains": [],
+        "top_dkim_results": [],
+        "top_dkim_selectors": [],
+        "top_envelope_from": [
+          {
+            "message_count": 9,
+            "name": "bad-domain.net"
+          }
+        ],
+        "top_header_from": [
+          {
+            "message_count": 9,
+            "name": "example.com"
+          }
+        ],
+        "top_override_reasons": [],
+        "top_spf_domains": [
+          {
+            "message_count": 9,
+            "name": "bad-domain.net"
+          }
+        ],
+        "top_spf_results": [
+          {
+            "message_count": 9,
+            "name": "fail"
+          }
+        ]
+      },
+      "fail_share_rate": 1.0,
+      "hostname": null,
+      "investigation_confidence": "low",
+      "investigation_note": "",
+      "legit_status": "pending_review",
+      "message_count": 9,
+      "source_ip": "198.51.100.9"
+    }
+  ]
+}
